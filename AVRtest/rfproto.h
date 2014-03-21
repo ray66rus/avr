@@ -14,10 +14,6 @@
 #define PREAMBULE_BYTE 0xAA
 #define SYNC_BYTE 0xFF
 
-#define HALF_PULSE_TIME 100 /* half of pulse length in us */
-#define PULSE_TIME 200
-#define LONG_PULSE_WAIT 140 /* HALF_PULSE_TIME + 2 * PULSE_JITTER_TIME */
-#define SHORT_PULSE_WAIT 60 /* HALF_PULSE_TIME - 2 * PULSE_JITTER_TIME */
 #define BIT_SPLIT_TIME 50
 #define PULSE_TIME_HIGH 100
 #define PULSE_TIME_LOW 40

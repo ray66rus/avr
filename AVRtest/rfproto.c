@@ -7,9 +7,46 @@
 
 #include "rfproto.h"
 #include <avr/io.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdlib.h>
 #include <string.h>
+
+struct RF_TIMER_STRUCT {
+	uint8_t is_on;
+	uint16_t counter;
+	uint8_t is_expired;
+} __timer;
+
+ISR(TIMER1_COMPA_vect) {
+	if(__timer.is_on == 0)
+		return;
+	if(__timer.counter == 0) {
+		__timer.is_expired = 1;
+		__timer.is_on = 0;
+		return;
+	}
+	__timer.counter--;
+}
+
+void set_timer(uint16_t delay) {
+	cli();
+	__timer.counter = delay;
+	__timer.is_expired = 0;
+	__timer.is_on = 1;
+
+	TCCR1A = 0; /* first timer control register */
+	TCCR1B = 0b1101; /* second timer control register */
+	TCNT1 = 0;  /* initial counter state */
+	OCR1A = 1;  /* max counter */
+	TIMSK = 0b10000; /* timer interrupt mask */
+	sei();
+}
+
+void clear_timer() {
+	cli();
+	__timer.counter = __timer.is_on = __timer.is_expired = 0;
+}
 
 int rf_init() {
 	DDRD=0x01;
