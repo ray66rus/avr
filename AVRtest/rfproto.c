@@ -60,15 +60,18 @@ unsigned char *_rf_prepare_send_buf(unsigned char *buf, unsigned char len) {
 
 static inline void _send_high() {
 	PORTD |= 0x01;
-	_delay_us(PULSE_TIME);
+	_delay_us(BIT_SPLIT_TIME);
 	PORTD &= 0xfe;
+	_delay_us(PULSE_TIME_HIGH);
+	PORTD |= 0x01;
 }
 
 static inline void _send_low() {
 	PORTD |= 0x01;
-	_delay_us(HALF_PULSE_TIME);
+	_delay_us(BIT_SPLIT_TIME);
 	PORTD &= 0xfe;
-	_delay_us(HALF_PULSE_TIME);
+	_delay_us(PULSE_TIME_LOW);
+	PORTD |= 0x01;
 }
 
 void _rf_send_data(unsigned char *send_buf) {
@@ -84,8 +87,9 @@ void _rf_send_data(unsigned char *send_buf) {
 			_send_low();
 		else
 			_send_high();
-		_delay_us(BIT_SPLIT_TIME);
 	}
+	_delay_us(20);
+	PORTD &= 0xfe;
 }
 
 int rf_send_block(unsigned char *buf, unsigned char len) {
@@ -110,43 +114,38 @@ static inline uint8_t _is_level_low() {
 
 static inline uint8_t _rf_get_next_bit() {
 	uint8_t counter;
-	for(counter=0;_is_level_low() && counter < PULSE_TIME;counter+=PULSE_JITTER)
-		_delay_us(PULSE_JITTER);
-	_delay_us(LONG_PULSE_WAIT);
-	uint8_t bit = _is_level_high();
-	_delay_us(SHORT_PULSE_WAIT);
-	return bit;
+	while(_is_level_high())
+		_delay_us(5);
+	for(counter=0;_is_level_low();counter++)
+		_delay_us(5);
+	return (counter > 10) ? 1 : 0;
 }
 
 int rf_recv_block(unsigned char *buf, unsigned long timeout) {
 	unsigned long counter;
 	unsigned char data[PACKET_DATA_LENGTH + 2];
-	for(counter=0;_is_level_low() && (timeout == 0 || counter < timeout);counter+=100)
-		_delay_us(100);
+	for(counter=0;_is_level_low() && (timeout == 0 || counter < timeout);counter+=10)
+		_delay_us(10);
 
 	if(timeout != 0 && counter >= timeout)
 		return -4;
 
 	int current_bit = _rf_get_next_bit();
-	if(current_bit < 0)
-		return current_bit;
 	int preambule_length = 1;
 	int next_bit = current_bit;
 	do {
 		current_bit = next_bit;
 		next_bit = _rf_get_next_bit();
-		if(next_bit < 0)
-			return next_bit;
 		preambule_length++;
 	} while(current_bit != next_bit);
 	if(preambule_length < 10)
-		return -1;
+		return preambule_length;
 	if(current_bit != 1)
-		return -1;
+		return -2;
 	for(uint8_t k=0;k<6;k++) {
 		current_bit = _rf_get_next_bit();
 		if(current_bit != 1)
-			return -1;
+			return -3;
 	}
 	for(uint8_t l=0;l<PACKET_DATA_LENGTH + 2;l++) {
 		data[l] = 0;
@@ -156,7 +155,7 @@ int rf_recv_block(unsigned char *buf, unsigned long timeout) {
 		}
 	}
 	if(!is_crc8_ok(data, PACKET_DATA_LENGTH + 1, data[PACKET_DATA_LENGTH + 1]))
-		return -2;
+		return -5;
 
 	memcpy(buf, data + 1, data[0] * sizeof(unsigned char));
 
