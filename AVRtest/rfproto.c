@@ -6,7 +6,6 @@
  */
 
 #include "rfproto.h"
-#include <avr/io.h>
 #include <avr/interrupt.h>
 #include <util/delay.h>
 #include <stdlib.h>
@@ -29,21 +28,21 @@ ISR(TIMER1_COMPA_vect) {
 	__timer.counter--;
 }
 
-void set_timer(uint16_t delay) {
+void set_timeout(uint16_t delay) {
 	cli();
 	__timer.counter = delay;
 	__timer.is_expired = 0;
 	__timer.is_on = 1;
 
 	TCCR1A = 0; /* first timer control register */
-	TCCR1B = 0b1101; /* second timer control register */
+	TCCR1B = 0b1011; /* second timer control register */
 	TCNT1 = 0;  /* initial counter state */
-	OCR1A = 1;  /* max counter */
+	OCR1A = 125;  /* max counter */
 	TIMSK = 0b10000; /* timer interrupt mask */
 	sei();
 }
 
-void clear_timer() {
+void clear_timeout() {
 	cli();
 	__timer.counter = __timer.is_on = __timer.is_expired = 0;
 }
@@ -78,8 +77,8 @@ unsigned char *_rf_prepare_send_buf(unsigned char *buf, unsigned char len) {
 	unsigned char *send_buf = calloc(PACKET_LENGTH, sizeof(unsigned char));
 
 	int i=0;
-	while(i<PREAMBULE_LENGTH)
-		send_buf[i++] = PREAMBULE_BYTE;
+	while(i<PREAMBLE_LENGTH)
+		send_buf[i++] = PREAMBLE_BYTE;
 	send_buf[i++] = SYNC_BYTE;
 
 	send_buf[i++] = len;
@@ -151,48 +150,60 @@ static inline uint8_t _is_level_low() {
 
 static inline uint8_t _rf_get_next_bit() {
 	uint8_t counter;
-	while(_is_level_high())
-		_delay_us(5);
-	for(counter=0;_is_level_low();counter++)
-		_delay_us(5);
-	return (counter > 10) ? 1 : 0;
+	while(_is_level_high() && !__timer.is_expired)
+		_delay_us(ATOMIC_DELAY);
+	for(counter=0;_is_level_low() && !__timer.is_expired;counter++)
+		_delay_us(ATOMIC_DELAY);
+	return (counter > ATOMIC_DELAYS_IN_TIME_LOW) ? 1 : 0;
 }
 
-int rf_recv_block(unsigned char *buf, unsigned long timeout) {
-	unsigned long counter;
-	unsigned char data[PACKET_DATA_LENGTH + 2];
-	for(counter=0;_is_level_low() && (timeout == 0 || counter < timeout);counter+=10)
-		_delay_us(10);
-
-	if(timeout != 0 && counter >= timeout)
-		return -4;
-
+uint8_t _get_preamble_and_sync() {
 	int current_bit = _rf_get_next_bit();
-	int preambule_length = 1;
+	int preamble_length = 1;
 	int next_bit = current_bit;
 	do {
 		current_bit = next_bit;
 		next_bit = _rf_get_next_bit();
-		preambule_length++;
+		preamble_length++;
 	} while(current_bit != next_bit);
-	if(preambule_length < 10)
-		return preambule_length;
-	if(current_bit != 1)
-		return -2;
-	for(uint8_t k=0;k<6;k++) {
+	if(preamble_length < 10 || current_bit == 0)
+		return 0;
+	for(uint8_t i=0;i<6;i++)
 		current_bit = _rf_get_next_bit();
-		if(current_bit != 1)
-			return -3;
-	}
-	for(uint8_t l=0;l<PACKET_DATA_LENGTH + 2;l++) {
+	return (current_bit == 1) ? 1 : 0;
+}
+
+
+int rf_recv_block(unsigned char *buf, uint16_t timeout) {
+	unsigned char data[PACKET_DATA_LENGTH_WITH_SIZE_AND_CRC];
+
+	if(timeout != 0)
+		set_timeout(timeout);
+
+	while(_is_level_low() && !__timer.is_expired)
+		_delay_us(ATOMIC_DELAY);
+
+	while(!_get_preamble_and_sync() && !__timer.is_expired) ;
+
+	if(__timer.is_expired)
+		return RF_ERR_TOUT;
+	clear_timeout();
+	set_timeout(MAX_DATA_RECV_TIME_MS);
+
+	for(uint8_t l=0;l<PACKET_DATA_LENGTH_WITH_SIZE_AND_CRC;l++) {
 		data[l] = 0;
 		for(int p=0;p<8;p++) {
 			data[l] <<= 1;
 			data[l] |= _rf_get_next_bit();
 		}
 	}
+
+	if(__timer.is_expired)
+			return RF_ERR_TOUT;
+	clear_timeout();
+
 	if(!is_crc8_ok(data, PACKET_DATA_LENGTH + 1, data[PACKET_DATA_LENGTH + 1]))
-		return -5;
+		return RF_ERR_CRC_ERROR;
 
 	memcpy(buf, data + 1, data[0] * sizeof(unsigned char));
 

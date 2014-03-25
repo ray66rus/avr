@@ -9,12 +9,16 @@ void main(void) {
     lcd_init(LCD_DISP_ON);
     lcd_puts("start\n");
 	rf_init();
-    int q = rf_recv_block(message, 1000000);
-    char err[10];
-    sprintf(err, "%d:", q);
-    lcd_puts(err);
-    message[12] = 0;
-
+    int q = rf_recv_block(message, 2000);
+    if(q == RF_ERR_TOUT) {
+    	lcd_puts("TIMEOUT!");
+    	return -1;
+    } else if(q == RF_ERR_CRC_ERROR) {
+    	lcd_puts("CRC ERROR!");
+    	return -1;
+    }
+    message[q] = 0;
     lcd_puts(message);
+    return 0;
 }
 

@@ -3,13 +3,13 @@
 #include <util/delay.h>
 #include "lcd.h"
 #include "uart.h"
-#include "rfproto.h"
 
 #define F_CPU 1000000UL
 #define UART_BAUD_RATE      1200
 
 void main(void) {
-	char message[] = "hello there!";
+}
+/*	char message[] = "hello there!";
 	int message_len = strlen(message);
 
 	char recv_message[20];
@@ -52,9 +52,9 @@ void main(void) {
 			recv_message[pointer++] = c;
 			message_len--;
         }
-	}
+	}*/
 
-	unsigned char recv_crc = recv_message[pointer-1];
+/*	unsigned char recv_crc = recv_message[pointer-1];
 	recv_message[pointer-1] = 0;
 
 	if(message_len <= 0)
@@ -65,8 +65,7 @@ void main(void) {
 	if(is_crc8_ok(recv_message, pointer-1, recv_crc))
 		lcd_puts("crc ok!");
 	else
-		lcd_puts("crc not ok!");
-}
+		lcd_puts("crc not ok!");*/
 
 /*
 static const PROGMEM unsigned char copyRightChar[] =
