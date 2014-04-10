@@ -124,7 +124,7 @@ void _rf_send_data(unsigned char *send_buf) {
 		else
 			_send_high();
 	}
-	_delay_us(20);
+	_delay_us(FINILIZE_PULSE_TIME);
 	PORTD &= 0xfe;
 }
 
